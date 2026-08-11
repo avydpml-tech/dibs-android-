@@ -37,7 +37,6 @@ jobs:
         wget -q https://downloads.tuxfamily.org/godotengine/3.4.4/Godot_v3.4.4-stable_export_templates.tpz
         mkdir -p ~/.local/share/godot/templates/3.4.4.stable
         unzip -q Godot_v3.4.4-stable_export_templates.tpz -d ~/.local/share/godot/templates/3.4.4.stable/
-        # Backup path for older Godot versions
         mkdir -p ~/.config/godot/templates/3.4.4.stable
         cp -r ~/.local/share/godot/templates/3.4.4.stable/* ~/.config/godot/templates/3.4.4.stable/ 2>/dev/null || true
 
@@ -66,5 +65,4 @@ jobs:
       with:
         files: build/DiBS.apk
       env:
-        GITHUB_TOKEN: ${{ secrets.GITH
-UB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
