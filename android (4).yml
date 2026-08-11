@@ -1,0 +1,87 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '11'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        cmdline-tools-version: 7583922
+        packages: 'platform-tools platforms;android-30 build-tools;30.0.3'
+
+    - name: Download Godot 3.4.4
+      run: |
+        curl -Lf -o godot.zip "https://github.com/godotengine/godot/releases/download/3.4.4-stable/Godot_v3.4.4-stable_linux_headless.64.zip"
+        unzip -q godot.zip
+        chmod +x Godot_v3.4.4-stable_linux_headless.64
+        sudo mv Godot_v3.4.4-stable_linux_headless.64 /usr/local/bin/godot
+        godot --version
+
+    - name: Download and install export templates
+      run: |
+        curl -Lf -o templates.tpz "https://github.com/godotengine/godot/releases/download/3.4.4-stable/Godot_v3.4.4-stable_export_templates.tpz"
+        # tpz contains templates/3.4.4.stable/ inside, extract properly
+        mkdir -p /tmp/godot_tpz
+        unzip -q templates.tpz -d /tmp/godot_tpz/
+        mkdir -p ~/.local/share/godot/templates/3.4.4.stable
+        cp -r /tmp/godot_tpz/templates/3.4.4.stable/* ~/.local/share/godot/templates/3.4.4.stable/
+        # Also copy to legacy config path
+        mkdir -p ~/.config/godot/templates/3.4.4.stable
+        cp -r ~/.local/share/godot/templates/3.4.4.stable/* ~/.config/godot/templates/3.4.4.stable/
+        echo "=== Templates directory ==="
+        ls -la ~/.local/share/godot/templates/3.4.4.stable/
+        echo "=== android_debug.apk exists? ==="
+        test -f ~/.local/share/godot/templates/3.4.4.stable/android_debug.apk && echo "YES" || echo "NO"
+
+    - name: Create debug keystore
+      run: |
+        keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
+
+    - name: Configure export presets
+      run: |
+        sed -i 's|keystore/debug="debug.keystore"|keystore/debug="'$PWD'/debug.keystore"|g' export_presets.cfg
+        echo "=== export_presets.cfg ==="
+        cat export_presets.cfg
+
+    - name: Export Android APK
+      run: |
+        mkdir -p build
+        godot --path . --verbose --export-debug "Android" ./build/DiBS.apk 2>&1 | tee build_log.txt
+
+    - name: Upload build log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: build_log.txt
+
+    - name: Upload APK artifact
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: DiBS-Android-APK
+        path: build/DiBS.apk
+
+    - name: Upload APK to Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: build/DiBS.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
