@@ -38,7 +38,7 @@ jobs:
         mkdir -p /tmp/godot_tpz
         unzip -q templates.tpz -d /tmp/godot_tpz/
         mkdir -p ~/.local/share/godot/templates/3.4.4.stable
-        cp -r /tmp/godot_tpz/templates/3.4.4.stable/* ~/.local/share/godot/templates/3.4.4.stable/
+        cp -r /tmp/godot_tpz/templates/* ~/.local/share/godot/templates/3.4.4.stable/
         mkdir -p ~/.config/godot/templates/3.4.4.stable
         cp -r ~/.local/share/godot/templates/3.4.4.stable/* ~/.config/godot/templates/3.4.4.stable/
         echo "=== Templates installed ==="
@@ -82,4 +82,3 @@ jobs:
         files: build/DiBS.apk
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
