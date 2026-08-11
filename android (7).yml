@@ -58,14 +58,8 @@ jobs:
 
     - name: Export Android APK
       run: |
-        set -o pipefail
         mkdir -p build
-        touch build_log.txt
         godot --path . --verbose --export-debug "Android" ./build/DiBS.apk 2>&1 | tee build_log.txt
-        echo "=== Build directory contents ==="
-        ls -la build/
-        echo "=== APK exists? ==="
-        test -f build/DiBS.apk && echo "YES - APK created!" || (echo "NO - APK missing!" && exit 1)
 
     - name: Upload build log on failure
       if: failure()
