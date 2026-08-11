@@ -39,6 +39,8 @@ jobs:
         unzip -q templates.tpz -d ~/.local/share/godot/templates/3.4.4.stable/
         mkdir -p ~/.config/godot/templates/3.4.4.stable
         cp -r ~/.local/share/godot/templates/3.4.4.stable/* ~/.config/godot/templates/3.4.4.stable/ 2>/dev/null || true
+        echo "=== Templates installed ==="
+        ls -la ~/.local/share/godot/templates/3.4.4.stable/
 
     - name: Create debug keystore
       run: |
@@ -47,13 +49,23 @@ jobs:
     - name: Configure export presets
       run: |
         sed -i 's|keystore/debug="debug.keystore"|keystore/debug="'$PWD'/debug.keystore"|g' export_presets.cfg
+        echo "=== export_presets.cfg ==="
+        cat export_presets.cfg
 
     - name: Export Android APK
       run: |
         mkdir -p build
-        godot --path . --export-debug "Android" ./build/DiBS.apk
+        godot --path . --verbose --export-debug "Android" ./build/DiBS.apk 2>&1 | tee build_log.txt
+
+    - name: Upload build log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: build_log.txt
 
     - name: Upload APK artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: DiBS-Android-APK
@@ -66,4 +78,3 @@ jobs:
         files: build/DiBS.apk
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
