@@ -31,20 +31,17 @@ jobs:
         unzip -q godot.zip
         chmod +x Godot_v3.4.4-stable_linux_headless.64
         sudo mv Godot_v3.4.4-stable_linux_headless.64 /usr/local/bin/godot
-        godot --version
 
     - name: Download and install export templates
       run: |
         curl -Lf -o templates.tpz "https://github.com/godotengine/godot/releases/download/3.4.4-stable/Godot_v3.4.4-stable_export_templates.tpz"
-        # tpz contains templates/3.4.4.stable/ inside, extract properly
         mkdir -p /tmp/godot_tpz
         unzip -q templates.tpz -d /tmp/godot_tpz/
         mkdir -p ~/.local/share/godot/templates/3.4.4.stable
         cp -r /tmp/godot_tpz/templates/3.4.4.stable/* ~/.local/share/godot/templates/3.4.4.stable/
-        # Also copy to legacy config path
         mkdir -p ~/.config/godot/templates/3.4.4.stable
         cp -r ~/.local/share/godot/templates/3.4.4.stable/* ~/.config/godot/templates/3.4.4.stable/
-        echo "=== Templates directory ==="
+        echo "=== Templates installed ==="
         ls -la ~/.local/share/godot/templates/3.4.4.stable/
         echo "=== android_debug.apk exists? ==="
         test -f ~/.local/share/godot/templates/3.4.4.stable/android_debug.apk && echo "YES" || echo "NO"
@@ -85,3 +82,4 @@ jobs:
         files: build/DiBS.apk
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
