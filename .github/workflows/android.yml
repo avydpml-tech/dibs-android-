@@ -25,7 +25,7 @@ jobs:
       # ── Android SDK + NDK r21 ──
       - name: Setup Android SDK & NDK
         run: |
-          apt-get update -qq && apt-get install -y -qq curl unzip
+          apt-get update -qq && apt-get install -y -qq curl unzip xvfb
           mkdir -p /root/android-sdk/cmdline-tools
           cd /root/android-sdk/cmdline-tools
           curl -fsSL -o cmdline-tools.zip \
@@ -70,15 +70,22 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOF
 
-      # ── Сборка APK (Godot уже установлен в образе) ──
+      # ── Реимпорт ассетов (отдельно, чтобы не падать во время экспорта) ──
+      - name: Reimport assets
+        run: |
+          xvfb-run --auto-servernum godot --path . --editor --quit --no-window
+
+      # ── Экспорт APK (без реимпорта, сразу сборка) ──
       - name: Export Android APK
         run: |
           mkdir -p build/android
-          godot --path . --no-window --export "Android" build/android/DiBS.apk
+          xvfb-run --auto-servernum godot --path . --no-window --verbose --export "Android" build/android/DiBS.apk
 
       # ── Загрузка артефакта ──
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: DiBS-Android-APK
+          path: build/android/DiBS.apk
+
           path: build/android/DiBS.apk
