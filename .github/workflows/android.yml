@@ -70,16 +70,16 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOF
 
-      # ── Реимпорт ассетов (отдельно, чтобы не падать во время экспорта) ──
+      # ── Реимпорт ассетов (Godot 3.x иногда падает с кодом 1 при выходе из редактора в CI — игнорируем) ──
       - name: Reimport assets
         run: |
-          xvfb-run --auto-servernum godot --path . --editor --quit --no-window
+          xvfb-run --auto-servernum godot --path . --editor --quit --no-window || true
 
-      # ── Экспорт APK (без реимпорта, сразу сборка) ──
+      # ── Экспорт APK ──
       - name: Export Android APK
         run: |
           mkdir -p build/android
-          xvfb-run --auto-servernum godot --path . --no-window --verbose --export "Android" build/android/DiBS.apk
+          xvfb-run --auto-servernum godot --path . --no-window --export "Android" build/android/DiBS.apk
 
       # ── Загрузка артефакта ──
       - name: Upload APK
