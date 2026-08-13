@@ -1,4 +1,4 @@
-name: Build Godot 3.4.4 Android
+name: Build Android APK
 
 on:
   push:
@@ -6,85 +6,93 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
-    container:
-      image: barichello/godot-ci:3.4.4
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ── Java 17 ──
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
           java-version: '17'
+          distribution: 'temurin'
 
-      # ── Android SDK + NDK r21 ──
-      - name: Setup Android SDK & NDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install xvfb
         run: |
-          apt-get update -qq && apt-get install -y -qq curl unzip xvfb
-          mkdir -p /root/android-sdk/cmdline-tools
-          cd /root/android-sdk/cmdline-tools
-          curl -fsSL -o cmdline-tools.zip \
-            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-          unzip -q cmdline-tools.zip
-          mv cmdline-tools latest
+          sudo apt-get update
+          sudo apt-get install -y xvfb
 
-          echo "ANDROID_SDK_ROOT=/root/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_HOME=/root/android-sdk" >> $GITHUB_ENV
-          export PATH="/root/android-sdk/cmdline-tools/latest/bin:$PATH"
+      - name: Download Godot
+        run: |
+          wget -q https://github.com/godotengine/godot/releases/download/3.4.4-stable/Godot_v3.4.4-stable_x11.64.zip
+          unzip -q Godot_v3.4.4-stable_x11.64.zip
+          mv Godot_v3.4.4-stable_x11.64 godot
+          chmod +x godot
 
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-30" \
-            "build-tools;30.0.3" \
-            "ndk;21.4.7075529"
+      - name: Download Export Templates
+        run: |
+          wget -q https://github.com/godotengine/godot/releases/download/3.4.4-stable/Godot_v3.4.4-stable_export_templates.tpz
+          mkdir -p ~/.local/share/godot/templates/3.4.4.stable
+          unzip -q Godot_v3.4.4-stable_export_templates.tpz -d ~/.local/share/godot/templates/3.4.4.stable/
 
-      # ── Debug Keystore ──
+      - name: Fix project.godot for Android
+        run: |
+          sed -i 's/config\/use_custom_user_dir=true/config\/use_custom_user_dir=false/g' project.godot
+          sed -i 's/window\/size\/borderless=true/window\/size\/borderless=false/g' project.godot
+          sed -i 's/settings\/fps\/force_fps=60/settings\/fps\/force_fps=0/g' project.godot
+          sed -i 's/window\/vsync\/use_vsync=false/window\/vsync\/use_vsync=true/g' project.godot
+
+      - name: Create editor settings
+        run: |
+          mkdir -p ~/.config/godot
+          echo '[gd_resource type="EditorSettings" load_steps=1 version=2]' > ~/.config/godot/editor_settings-3.tres
+          echo '' >> ~/.config/godot/editor_settings-3.tres
+          echo '[resource]' >> ~/.config/godot/editor_settings-3.tres
+          echo 'export/android/android_sdk_path = "/usr/local/lib/android/sdk"' >> ~/.config/godot/editor_settings-3.tres
+          echo 'export/android/debug_keystore = "/home/runner/work/dibs-android-/dibs-android-/debug.keystore"' >> ~/.config/godot/editor_settings-3.tres
+          echo 'export/android/debug_keystore_user = "androiddebugkey"' >> ~/.config/godot/editor_settings-3.tres
+          echo 'export/android/debug_keystore_pass = "android"' >> ~/.config/godot/editor_settings-3.tres
+
       - name: Create debug keystore
         run: |
-          mkdir -p /root/.android
-          keytool -genkey -v \
-            -keystore /root/.android/debug.keystore \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -keyalg RSA \
-            -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-      # ── Godot Editor Settings ──
-      - name: Configure Godot editor settings
+      - name: Import assets
         run: |
-          mkdir -p /root/.config/godot
-          cat > /root/.config/godot/editor_settings-3.tres << 'EOF'
-          [gd_resource type="EditorSettings" format=2]
-          [resource]
-          export/android/android_sdk_path = "/root/android-sdk"
-          export/android/debug_keystore = "/root/.android/debug.keystore"
-          export/android/debug_keystore_user = "androiddebugkey"
-          export/android/debug_keystore_pass = "android"
-          EOF
+          xvfb-run --auto-servernum ./godot --path $GITHUB_WORKSPACE --editor --quit 2>&1 | tee godot_import.log || true
 
-      # ── Реимпорт ассетов (игнорируем падение — Godot 3.x баг в CI) ──
-      - name: Reimport assets
-        continue-on-error: true
+      - name: Export APK
         run: |
-          xvfb-run --auto-servernum godot --path . --editor --quit --no-window
+          set -eo pipefail
+          ./godot --path $GITHUB_WORKSPACE --verbose --export "Android" game.apk 2>&1 | tee godot_export.log
+          if [ ! -f game.apk ]; then
+            echo "ERROR: game.apk not found after export"
+            exit 1
+          fi
 
-      # ── Экспорт APK ──
-      - name: Export Android APK
+      - name: Sign APK
         run: |
-          mkdir -p build/android
-          xvfb-run --auto-servernum godot --path . --no-window --export "Android" build/android/DiBS.apk
+          BUILDTOOLS=$ANDROID_SDK_ROOT/build-tools/$(ls $ANDROID_SDK_ROOT/build-tools | sort -V | tail -1)
+          echo "Using build-tools: $BUILDTOOLS"
+          $BUILDTOOLS/zipalign -v -f 4 game.apk game_aligned.apk
+          $BUILDTOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out game_signed.apk game_aligned.apk
 
-      # ── Загрузка артефакта ──
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: DiBS-Android-APK
-          path: build/android/DiBS.apk
+          path: game_signed.apk
+          if-no-files-found: error
+
+      - name: Upload Godot logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-logs
+          path: |
+            godot_import.log
+            godot_export.log
+          if-no-files-found: ignore
