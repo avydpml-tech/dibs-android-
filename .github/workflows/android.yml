@@ -1,7 +1,5 @@
 name: Build Godot 3.4.4 Android
 
-name: Build Godot 3.4.4 Android
-
 on:
   push:
     branches: [ main, master ]
@@ -84,4 +82,3 @@ jobs:
         with:
           name: DiBS-Android-APK
           path: build/android/DiBS.apk
-
