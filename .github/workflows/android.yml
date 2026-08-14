@@ -1,99 +1,47 @@
-name: Build Android APK
-
-on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install xvfb
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
-      - name: Download Godot
-        run: |
-          wget -q https://github.com/godotengine/godot/releases/download/3.4.4-stable/Godot_v3.4.4-stable_x11.64.zip
-          unzip -q Godot_v3.4.4-stable_x11.64.zip
-          mv Godot_v3.4.4-stable_x11.64 godot
-          chmod +x godot
-
-      - name: Download Export Templates
-        run: |
-          wget -q https://github.com/godotengine/godot/releases/download/3.4.4-stable/Godot_v3.4.4-stable_export_templates.tpz
-          mkdir -p ~/.local/share/godot/templates/3.4.4.stable
-          unzip -q Godot_v3.4.4-stable_export_templates.tpz -d ~/.local/share/godot/templates/3.4.4.stable/
-
-      - name: Fix project.godot for Android
-        run: |
-          sed -i 's/config\/use_custom_user_dir=true/config\/use_custom_user_dir=false/g' project.godot
-          sed -i 's/window\/size\/borderless=true/window\/size\/borderless=false/g' project.godot
-          sed -i 's/settings\/fps\/force_fps=60/settings\/fps\/force_fps=0/g' project.godot
-          sed -i 's/window\/vsync\/use_vsync=false/window\/vsync\/use_vsync=true/g' project.godot
-
-      - name: Create editor settings
-        run: |
-          mkdir -p ~/.config/godot
-          echo '[gd_resource type="EditorSettings" load_steps=1 version=2]' > ~/.config/godot/editor_settings-3.tres
-          echo '' >> ~/.config/godot/editor_settings-3.tres
-          echo '[resource]' >> ~/.config/godot/editor_settings-3.tres
-          echo 'export/android/android_sdk_path = "/usr/local/lib/android/sdk"' >> ~/.config/godot/editor_settings-3.tres
-          echo 'export/android/debug_keystore = "/home/runner/work/dibs-android-/dibs-android-/debug.keystore"' >> ~/.config/godot/editor_settings-3.tres
-          echo 'export/android/debug_keystore_user = "androiddebugkey"' >> ~/.config/godot/editor_settings-3.tres
-          echo 'export/android/debug_keystore_pass = "android"' >> ~/.config/godot/editor_settings-3.tres
-
-      - name: Create debug keystore
-        run: |
-          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-
-      - name: Import assets
-        run: |
-          xvfb-run --auto-servernum ./godot --path $GITHUB_WORKSPACE --editor --quit 2>&1 | tee godot_import.log || true
-
       - name: Export APK
         run: |
-          xvfb-run --auto-servernum ./godot --path $GITHUB_WORKSPACE --verbose --export "Android" game.apk 2>&1 | tee godot_export.log || true
-          if [ ! -f game.apk ]; then
+          # Проверяем, есть ли export_presets.cfg
+          if [ ! -f "$GITHUB_WORKSPACE/export_presets.cfg" ]; then
+            echo "WARNING: export_presets.cfg not found, creating minimal one"
+            cat > "$GITHUB_WORKSPACE/export_presets.cfg" << 'EOF'
+[preset.0]
+
+name="Android"
+platform="Android"
+runnable=true
+custom_features=""
+export_filter="all_resources"
+include_filter=""
+exclude_filter=""
+export_path="game.apk"
+script_export_mode=1
+script_encryption_key=""
+
+[preset.0.options]
+
+graphics/32_bits_framebuffer=true
+xr_features/xr_mode=0
+screen/immersive_mode=true
+screen/orientation=0
+command_line/extra_args=""
+apk_expansion/enable=false
+architectures/armeabi-v7a=true
+architectures/arm64-v8a=true
+architectures/x86=false
+architectures/x86_64=false
+EOF
+          fi
+
+          # Экспортируем с --quit
+          xvfb-run --auto-servernum ./godot --path $GITHUB_WORKSPACE --no-window --export "Android" game.apk --quit 2>&1 | tee godot_export.log || true
+
+          # Ищем APK в нескольких местах
+          ls -la $GITHUB_WORKSPACE/*.apk 2>/dev/null || true
+          ls -la $GITHUB_WORKSPACE/build/*.apk 2>/dev/null || true
+
+          if [ ! -f "$GITHUB_WORKSPACE/game.apk" ]; then
             echo "ERROR: game.apk not found after export"
+            cat godot_export.log | tail -50
             exit 1
           fi
-          echo "APK created successfully: $(ls -lh game.apk)"
-
-
-      - name: Sign APK
-        run: |
-          BUILDTOOLS=$ANDROID_SDK_ROOT/build-tools/$(ls $ANDROID_SDK_ROOT/build-tools | sort -V | tail -1)
-          echo "Using build-tools: $BUILDTOOLS"
-          $BUILDTOOLS/zipalign -v -f 4 game.apk game_aligned.apk
-          $BUILDTOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out game_signed.apk game_aligned.apk
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: DiBS-Android-APK
-          path: game_signed.apk
-          if-no-files-found: error
-
-      - name: Upload Godot logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: godot-logs
-          path: |
-            godot_import.log
-            godot_export.log
-          if-no-files-found: ignore
+          echo "APK created successfully: $(ls -lh $GITHUB_WORKSPACE/game.apk)"
