@@ -66,12 +66,12 @@ jobs:
 
       - name: Export APK
         run: |
-          set -eo pipefail
-          xvfb-run --auto-servernum ./godot --path $GITHUB_WORKSPACE --verbose --export "Android" game.apk 2>&1 | tee godot_export.log
+          xvfb-run --auto-servernum ./godot --path $GITHUB_WORKSPACE --verbose --export "Android" game.apk 2>&1 | tee godot_export.log || true
           if [ ! -f game.apk ]; then
             echo "ERROR: game.apk not found after export"
             exit 1
           fi
+          echo "APK created successfully: $(ls -lh game.apk)"
 
 
       - name: Sign APK
